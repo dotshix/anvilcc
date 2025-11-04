@@ -1,5 +1,8 @@
 use std::{path::PathBuf, process::Command};
 
+mod lexer;
+mod token;
+
 #[derive(Debug)]
 struct AppArgs {
     file: PathBuf,
