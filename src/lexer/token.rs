@@ -1,12 +1,6 @@
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Keyword {
-    Int,
-    Void,
-    Return,
-}
+use super::lexer::TextSpan;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Kind {
+pub enum TokenKind {
     LParen, // (
     RParen, // )
     LBrace, // {
@@ -19,26 +13,19 @@ pub enum Kind {
     KwReturn,
 
     Identifier,
-    Constant,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum TokenValue {
-    None,
     Number(i64),
-    String(String),
+
+    Eof,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Token {
     // Type
-    pub kind: Kind,
+    pub kind: TokenKind,
+    pub span: TextSpan,
+}
 
-    // start in source
-    pub start: usize,
-
-    // end in source
-    pub end: usize,
-
-    pub value: TokenValue,
+impl Token {
+    fn new(kind: TokenKind, span: TextSpan) -> Self {
+        Token { kind, span }
+    }
 }

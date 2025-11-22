@@ -1,37 +1,77 @@
-use std::str::Chars;
+use super::token::{Token, TokenKind};
 
-struct Lexer<'a> {
-    // source text
-    source: &'a str,
-
-    // remaining text
-    chars: Chars<'a>,
+pub struct TextSpan {
+    start: usize,
+    end: usize,
+    literal: String,
 }
 
-impl<'a> Lexer<'a> {
-    pub fn new(source: &'a str) -> Self {
+impl TextSpan {
+    pub fn new(start: usize, end: usize, literal: String) -> Self {
         Self {
-            source,
-            chars: source.chars(),
+            start,
+            end,
+            literal,
         }
     }
 
-    // get how many bytes we've advanced
-    fn offset(&self) -> usize {
-        self.source.len() - self.chars.as_str().len()
+    pub fn length(&self) -> usize {
+        self.end - self.start
     }
 
-    fn peek(&self) -> Option<char> {
-        self.chars.clone().next()
+    pub fn get_start(&self) -> usize {
+        self.start
+    }
+    pub fn get_end(&self) -> usize {
+        self.end
+    }
+    pub fn get_literal(&self) -> String {
+        self.literal.clone()
+    }
+}
+
+pub struct Lexer<'a> {
+    src: &'a str,
+    current_pos: usize,
+}
+
+impl<'a> Lexer<'a> {
+    pub fn new(src: &'a str) -> Self {
+        Self {
+            src,
+            current_pos: 0,
+        }
     }
 
-    fn skip_whitespace(&mut self) {
-        while let Some(ch) = self.peek() {
-            if ch.is_whitespace() {
-                self.chars.next();
-            } else {
-                break;
-            }
+    fn advance(&mut self) {
+        if let Some(ch) = self.current_char() {
+            self.current_pos += ch.len_utf8();
+        }
+    }
+
+    fn current_char(&self) -> Option<char> {
+        self.src[self.current_pos..].chars().next()
+    }
+
+    pub fn read_number(&mut self) -> Token {
+        let start = self.current_pos;
+
+        // consume
+        while matches!(self.current_char(), Some(c) if c.is_ascii_digit()) {
+            self.advance();
+        }
+
+        let end = self.current_pos;
+
+        // slice out the literal text
+        let literal = self.src[start..end].to_string();
+        let value = literal.parse::<i64>().unwrap(); // assume valid for now
+
+        let span = TextSpan::new(start, end, literal);
+
+        Token {
+            kind: TokenKind::Number(value),
+            span,
         }
     }
 }
