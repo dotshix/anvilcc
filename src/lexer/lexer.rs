@@ -56,22 +56,100 @@ impl<'a> Lexer<'a> {
     pub fn read_number(&mut self) -> Token {
         let start = self.current_pos;
 
-        // consume
         while matches!(self.current_char(), Some(c) if c.is_ascii_digit()) {
             self.advance();
         }
 
         let end = self.current_pos;
-
-        // slice out the literal text
         let literal = self.src[start..end].to_string();
-        let value = literal.parse::<i64>().unwrap(); // assume valid for now
+
+        match literal.parse::<i64>() {
+            Ok(value) => Token {
+                kind: TokenKind::Number(value),
+                span: TextSpan::new(start, end, literal),
+            },
+            Err(_) => Token {
+                kind: TokenKind::Error("integer error".into()),
+                span: TextSpan::new(start, end, literal),
+            },
+        }
+    }
+
+    fn single_char(&mut self, kind: TokenKind) -> Token {
+        let start = self.current_pos;
+        let c = self.current_char().unwrap();
+        self.advance();
+        let end = self.current_pos;
+
+        let span = TextSpan::new(start, end, c.to_string());
+        Token { kind, span }
+    }
+
+    pub fn read_kw_or_identifier(&mut self) -> Token {
+        let start = self.current_pos;
+
+        // consume
+        while matches!(self.current_char(), Some(c) if c.is_ascii_alphanumeric()) {
+            self.advance();
+        }
+
+        let end = self.current_pos;
+
+        // slice
+        let literal = self.src[start..end].to_string();
+
+        let kind = match literal.as_str() {
+            "int" => TokenKind::KwInt,
+            "void" => TokenKind::KwVoid,
+            "return" => TokenKind::KwReturn,
+            _ => TokenKind::Identifier,
+        };
 
         let span = TextSpan::new(start, end, literal);
 
-        Token {
-            kind: TokenKind::Number(value),
-            span,
+        Token { kind, span }
+    }
+
+    fn skip_whitespace(&mut self) {
+        while matches!(self.current_char(), Some(c) if c.is_whitespace()) {
+            self.advance();
+        }
+    }
+
+    pub fn next_token(&mut self) -> Token {
+        self.skip_whitespace();
+
+        let start = self.current_pos;
+
+        match self.current_char() {
+            None => {
+                let span = TextSpan::new(start, start, String::new());
+                Token {
+                    kind: TokenKind::Eof,
+                    span,
+                }
+            }
+            Some(c) if c.is_ascii_digit() => self.read_number(),
+
+            Some(c) if c.is_ascii_alphanumeric() || c == '_' => self.read_kw_or_identifier(),
+
+            Some('(') => self.single_char(TokenKind::LParen),
+            Some(')') => self.single_char(TokenKind::RParen),
+            Some('{') => self.single_char(TokenKind::LBrace),
+            Some('}') => self.single_char(TokenKind::RBrace),
+            Some(';') => self.single_char(TokenKind::Semicolon),
+            Some(c) => {
+                self.advance();
+
+                let literal = c.to_string();
+                let end = self.current_pos;
+                let span = TextSpan::new(start, end, literal.clone());
+
+                Token {
+                    kind: TokenKind::Error(format!("unexpected character `{}`", c)),
+                    span,
+                }
+            }
         }
     }
 }

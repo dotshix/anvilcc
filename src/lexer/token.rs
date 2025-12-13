@@ -16,6 +16,7 @@ pub enum TokenKind {
     Number(i64),
 
     Eof,
+    Error(String),
 }
 
 pub struct Token {
