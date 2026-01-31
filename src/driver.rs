@@ -1,10 +1,14 @@
 use crate::args::parse_args;
-use crate::lexer::lexer::Lexer;
-use crate::lexer::token::TokenKind;
+use crate::args::Stage;
+use crate::lexer::Lexer;
+use crate::token::TokenKind;
 use std::error::Error;
+use std::fs;
+use std::path::Path;
 use std::path::PathBuf;
+use std::process::Command;
 
-fn dump_tokens(src: &str) {
+fn dump_tokens(src: &str) -> Result<(), Box<dyn Error>> {
     let mut lex = Lexer::new(src);
 
     loop {
@@ -23,7 +27,7 @@ fn dump_tokens(src: &str) {
             TokenKind::RBrace => println!("RBrace"),
             TokenKind::Semicolon => println!("Semicolon"),
 
-            TokenKind::Eof => break,
+            TokenKind::Eof => return Ok(()),
             TokenKind::Error(msg) => {
                 eprintln!(
                     "Error: {} at {}..{} (literal: {:?})",
@@ -32,24 +36,88 @@ fn dump_tokens(src: &str) {
                     tok.span.get_end(),
                     tok.span.get_literal()
                 );
-                break;
+                return Err(msg.clone().into());
             }
         }
     }
 }
 
-fn preprocessed_path(file: &PathBuf) -> Result<String, &'static str> {
+fn preprocessed_path(file: &Path) -> Result<PathBuf, &'static str> {
     let stem = file.file_stem().ok_or("not a valid file path")?;
-    Ok(format!("{}_PREPROCESSED.i", stem.to_string_lossy()))
+    Ok(file.with_file_name(format!("{}_PREPROCESSED.i", stem.to_string_lossy())))
+}
+
+fn asm_path(file: &Path) -> Result<PathBuf, &'static str> {
+    let stem = file.file_stem().ok_or("not a valid file path")?;
+    Ok(file.with_file_name(format!("{}.s", stem.to_string_lossy())))
 }
 
 pub fn run() -> Result<(), Box<dyn Error>> {
-    // temporary demo input
-    dump_tokens("int main(void) {\n\treturn 2;\n}");
-
     let args = parse_args()?;
-    let out = preprocessed_path(&args.file)?;
-    println!("{:?} \n{out}", args);
+    let pre_process = preprocessed_path(&args.file)?;
+
+    // gcc -E -P INPUT_FILE -o PREPROCESSED_FILE
+
+    let status = Command::new("gcc")
+        .arg("-E")
+        .arg("-P")
+        .arg(&args.file)
+        .arg("-o")
+        .arg(&pre_process)
+        .status()?;
+
+    if !status.success() {
+        return Err("gcc preprocessing failed".into());
+    }
+
+    let src = fs::read_to_string(&pre_process)?;
+    dump_tokens(&src)?;
+
+    // STAGE GATES (stop early)
+    match args.stage {
+        Stage::Lex => {
+            let _ = fs::remove_file(&pre_process);
+            return Ok(());
+        }
+        Stage::Parse => {
+            // parse not implemented yet; stop here anyway
+            let _ = fs::remove_file(&pre_process);
+            return Ok(());
+        }
+        _ => {} // Codegen / Run continue
+    }
+
+    // stub compiler
+    let asm = asm_path(&args.file)?;
+
+    let asm_text = "\
+    .globl main
+    main:
+         mov $0, %eax
+         ret
+";
+
+    fs::write(&asm, asm_text)?;
+
+    if matches!(args.stage, Stage::Codegen) {
+        let _ = fs::remove_file(&pre_process);
+        let _ = fs::remove_file(&asm);
+        return Ok(());
+    }
+    // build executable
+    let exe = args.file.with_extension("");
+
+    let status = Command::new("gcc").arg(&asm).arg("-o").arg(&exe).status()?;
+
+    if !status.success() {
+        // cleanup pre file
+
+        let _ = fs::remove_file(&pre_process);
+        return Err("gcc failed to assemble/link".into());
+    }
+
+    let _ = fs::remove_file(&pre_process);
+    let _ = fs::remove_file(&asm);
 
     Ok(())
 }
